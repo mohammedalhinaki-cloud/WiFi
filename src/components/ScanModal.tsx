@@ -270,7 +270,7 @@ function ScannerSetup({ endpoint, open, error, onToggle, onEndpointChange, onSub
             />
             <button className="button soft small" type="submit">حفظ وتجربة</button>
           </div>
-          <p id="scan-endpoint-help">للاستخدام مع GitHub Pages شغّل <code>npm run scan:server</code>، ثم استخدم العنوان الافتراضي <code>{getLocalScannerEndpoint()}</code>. يجب تفعيل CORS إذا كان Backend خارجيًا.</p>
+          <p id="scan-endpoint-help">للاستخدام مع GitHub Pages شغّل المساعد مع <code>WIFI_SCAN_ORIGINS=https://&lt;owner&gt;.github.io</code>، ثم استخدم العنوان <code>{getLocalScannerEndpoint()}</code>. لا يسمح المساعد افتراضيًا إلا لأصول التطوير المحلية.</p>
           {error && <strong className="scanner-setup-error">{error}</strong>}
         </form>
       )}

@@ -1,4 +1,4 @@
-import type { GuessSimulation, PasswordAnalysis, SecurityProtocol } from '../types'
+import type { PasswordAnalysis, SecurityProtocol } from '../types'
 
 /**
  * This is deliberately a local, explainable layer on top of zxcvbn. The
@@ -18,6 +18,21 @@ const SYMBOL_POOL_SIZE = 33
 const MIN_WIFI_LENGTH = 8
 const MAX_WIFI_LENGTH = 63
 
+function characterCount(value: string) {
+  return Array.from(value).length
+}
+
+function utf8Length(value: string) {
+  return new TextEncoder().encode(value).length
+}
+
+function isPortableWifiPassphrase(value: string) {
+  // WPA passphrases are specified as 8–63 printable ASCII characters.
+  // Some routers accept Unicode after vendor-specific UTF-8 conversion, but
+  // that is not portable between access points or clients.
+  return /^[\x20-\x7e]+$/u.test(value) && characterCount(value) >= MIN_WIFI_LENGTH && characterCount(value) <= MAX_WIFI_LENGTH
+}
+
 /**
  * These are modelling assumptions, not measurements of a particular router.
  * The expected time is calculated as guesses / 2 / rate (50% chance of a
@@ -27,14 +42,14 @@ const MAX_WIFI_LENGTH = 63
  */
 export const ATTACK_MODELS: Record<SecurityProtocol, { rate: number; label: string; note: string }> = {
   WPA3: {
-    rate: 10,
-    label: '10 محاولات/ث',
-    note: 'نموذج محافظ لمحاولات SAE محدودة؛ ليس فكًا غير متصل.',
+    rate: 5,
+    label: '5 محاولات/ث',
+    note: 'نموذج جلسة محافظ ومحدود لـ SAE؛ لا يفترض مادة تحقق للتخمين غير المتصل.',
   },
   'WPA2/WPA3': {
-    rate: 10_000,
-    label: '10 آلاف محاولة/ث',
-    note: 'تقدير محافظ لاتصال مختلط؛ يختلف حسب التفاوض والإعدادات.',
+    rate: 100_000,
+    label: '100 ألف محاولة/ث',
+    note: 'نموذج أسوأ حالة لمسار WPA2-PSK في وضع انتقالي؛ يختلف حسب تفاوض العميل والإعدادات.',
   },
   WPA2: {
     rate: 100_000,
@@ -208,161 +223,6 @@ export function formatLargeNumber(value: number) {
   return value.toExponential(2).replace('e+', ' × 10^')
 }
 
-const COMMON_GUESSES = [
-  '12345678', '123456789', '1234567890', '87654321', '00000000', '11111111',
-  'password', 'Password', 'Password1', 'Password123', 'passw0rd', 'Passw0rd',
-  'qwerty123', 'qwertyui', 'abc12345', 'admin123', 'admin1234', 'welcome1',
-  'welcome123', 'letmein1', 'iloveyou', 'internet', 'internet123', 'wifi1234',
-  'wireless', 'router123', 'مرحبا123', 'السعودية1', 'الرياض123',
-]
-
-const GUESS_SUFFIXES = [
-  '', '1', '12', '123', '1234', '12345', '123456', '321', '007', '000', '111',
-  '!', '@', '#', '!1', '@1', '!12', '@12', '!123', '@123', '#123', '_123', '-123',
-]
-
-const GUESS_PREFIXES = ['', '1', '123', '@', '!']
-const LEET_OPTIONS: Record<string, string[]> = {
-  a: ['a', '4', '@'],
-  e: ['e', '3'],
-  i: ['i', '1', '!'],
-  o: ['o', '0'],
-  s: ['s', '5', '$'],
-  t: ['t', '7'],
-}
-
-function titleCase(value: string) {
-  return value.toLocaleLowerCase().replace(/(^|[\s_-])(\p{L})/gu, (_match, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase()}`)
-}
-
-function leetVariants(value: string, limit = 24) {
-  let variants = ['']
-  for (const character of value) {
-    const options = LEET_OPTIONS[character.toLocaleLowerCase()] || [character]
-    const next: string[] = []
-    for (const prefix of variants) {
-      for (const option of options) {
-        next.push(prefix + option)
-        if (next.length >= limit) break
-      }
-      if (next.length >= limit) break
-    }
-    variants = next
-  }
-  return variants
-}
-
-function guessSeeds(ssid: string, relatedWords: string) {
-  const trimmedSsid = ssid.trim()
-  const ssidWithoutBand = trimmedSsid.replace(/[-_\s]?(?:2[.]?4|5|6)g(?:hz)?$/iu, '')
-  const ssidParts = trimmedSsid.split(/[^\p{L}\p{N}]+/u).filter((part) => part.length >= 3)
-  return unique([
-    trimmedSsid,
-    ssidWithoutBand,
-    ...ssidParts,
-    ...splitRelatedWords(relatedWords),
-    ...WIFI_TERMS,
-    ...ARABIC_TRANSLITERATIONS,
-  ].map((value) => value.trim())).filter(Boolean)
-}
-
-function* targetedGuessCandidates(ssid: string, relatedWords: string): Generator<readonly [string, string], void, unknown> {
-  for (const candidate of COMMON_GUESSES) yield [candidate, 'قائمة كلمات شائعة']
-
-  const year = new Date().getFullYear()
-  const yearSuffixes = Array.from({ length: 11 }, (_value, index) => String(year - 5 + index))
-    .flatMap((value) => [value, `${value}!`, `${value}@`, `@${value}`])
-  const suffixes = [...GUESS_SUFFIXES, ...yearSuffixes]
-  const seeds = guessSeeds(ssid, relatedWords)
-
-  for (const seed of seeds) {
-    const compact = seed.replace(/\s+/gu, '')
-    const caseVariants = unique([
-      seed,
-      compact,
-      seed.toLocaleLowerCase(),
-      seed.toLocaleUpperCase(),
-      titleCase(seed),
-      titleCase(compact),
-    ])
-    // Keep each seed's share bounded so the fixed budget covers every seed and
-    // still reaches pair-combination and numeric strategies.
-    const variants = unique([
-      ...caseVariants,
-      ...leetVariants(compact, 12),
-      ...leetVariants(compact.toLocaleLowerCase(), 12),
-    ]).slice(0, 18)
-
-    for (const variant of variants) {
-      for (const suffix of suffixes) yield [`${variant}${suffix}`, 'تحويل سياقي وبدائل أحرف']
-      for (const prefix of GUESS_PREFIXES.slice(1)) yield [`${prefix}${variant}`, 'بادئة شائعة مع كلمة سياقية']
-    }
-  }
-
-  const pairSeeds = seeds.slice(0, 12).flatMap((seed) => unique([seed, seed.toLocaleLowerCase(), titleCase(seed)]))
-  for (const first of pairSeeds) {
-    for (const second of pairSeeds) {
-      if (first === second) continue
-      for (const separator of ['', '_', '-', '@']) {
-        yield [`${first}${separator}${second}`, 'دمج كلمتين مرتبطتين']
-        yield [`${first}${separator}${second}123`, 'دمج سياقي مع لاحقة رقمية']
-      }
-    }
-  }
-
-  // Fill the remaining bounded budget with a deterministic numeric pattern.
-  // This is a local exposure simulation only; candidates are never sent to a
-  // router and no authentication API is called.
-  for (let value = 0; ; value += 1) {
-    yield [String(value).padStart(8, '0'), 'نمط رقمي من ثمانية خانات']
-  }
-}
-
-/**
- * Run a bounded, exact guessing simulation against the reference phrase that
- * is already present in browser memory. Unlike the zxcvbn estimate, a match
- * here means that a concrete generated candidate was actually equal to the
- * reference value. The function has no networking and cannot test an unknown
- * router password, capture a handshake, or attempt authentication.
- */
-export function simulateTargetedGuessing(
-  referencePassword: string,
-  ssid: string,
-  relatedWords = '',
-  requestedBudget = 50_000,
-): GuessSimulation {
-  const maxGuesses = Math.min(250_000, Math.max(1, Math.floor(requestedBudget) || 50_000))
-  const startedAt = globalThis.performance?.now?.() ?? Date.now()
-  const seen = new Set<string>()
-  let attempted = 0
-  let matchedBy: string | undefined
-
-  if (referencePassword) {
-    for (const [candidate, strategy] of targetedGuessCandidates(ssid, relatedWords)) {
-      if (seen.has(candidate)) continue
-      seen.add(candidate)
-      attempted += 1
-      if (candidate === referencePassword) {
-        matchedBy = strategy
-        break
-      }
-      if (attempted >= maxGuesses) break
-    }
-  }
-
-  const finishedAt = globalThis.performance?.now?.() ?? Date.now()
-  const elapsedMs = Math.max(0.01, finishedAt - startedAt)
-  return {
-    attempted,
-    maxGuesses,
-    matched: Boolean(matchedBy),
-    matchedAt: matchedBy ? attempted : undefined,
-    matchedBy,
-    elapsedMs,
-    guessesPerSecond: attempted ? Math.round(attempted / (elapsedMs / 1000)) : 0,
-  }
-}
-
 function mapLevel(score: number): PasswordAnalysis['level'] {
   if (score >= 85) return 'excellent'
   if (score >= 65) return 'good'
@@ -421,16 +281,19 @@ export async function analyzePassword(
   const sequence = findSequentialRun(password)
   const repeated = hasRepetition(password)
   const predictable = hasPredictablePattern(password)
-  const wifiValidLength = password.length >= MIN_WIFI_LENGTH && password.length <= MAX_WIFI_LENGTH
+  const passwordLength = characterCount(password)
+  const passwordUtf8Bytes = utf8Length(password)
+  const wifiValidLength = passwordLength >= MIN_WIFI_LENGTH && passwordLength <= MAX_WIFI_LENGTH
+  const portableWifiPassphrase = isPortableWifiPassphrase(password)
   const result = zxcvbn(password, contextTerms(ssid, relatedWords))
 
   // zxcvbn supplies the dictionary/rule estimate. The explicit penalties make
   // the Wi-Fi-specific reasons visible and keep a long predictable password
   // from receiving an unjustifiably high score.
   let score = result.score * 20 + 5
-  if (password.length >= 16) score += 8
-  if (password.length >= 20) score += 7
-  if (password.length >= 24) score += 4
+  if (passwordLength >= 16) score += 8
+  if (passwordLength >= 20) score += 7
+  if (passwordLength >= 24) score += 4
   if (profile.categories >= 3) score += 4
   if (profile.categories >= 4) score += 4
   if (common) score -= 30
@@ -440,7 +303,10 @@ export async function analyzePassword(
   if (!wifiValidLength) score = Math.min(score, 18)
   score = Math.max(0, Math.min(100, Math.round(score)))
 
-  const theoreticalCombinations = Math.pow(profile.poolSize, password.length)
+  // This is an upper bound for uniformly random choices from the detected
+  // character pool, not a claim about a human-created phrase. The effective
+  // estimate below comes from zxcvbn plus the explicit pattern penalties.
+  const theoreticalCombinations = Math.pow(profile.poolSize, passwordLength)
   const rawGuesses = Math.max(1, result.guesses)
   // If a custom Wi-Fi heuristic finds a pattern that the general dictionary
   // may not know (for example an Arabic sequence), reduce the effective guess
@@ -456,7 +322,7 @@ export async function analyzePassword(
   const guesses = Number.isFinite(theoreticalCombinations)
     ? Math.max(1, Math.min(effectiveGuesses, theoreticalCombinations))
     : Math.max(1, effectiveGuesses)
-  const searchSpaceBits = password.length * Math.log2(profile.poolSize)
+  const searchSpaceBits = passwordLength * Math.log2(profile.poolSize)
   const entropyBits = Math.max(0, Math.min(searchSpaceBits, Math.log2(guesses)))
   const attackModel = ATTACK_MODELS[security]
   const crackSeconds = guesses / attackModel.rate / 2
@@ -465,18 +331,20 @@ export async function analyzePassword(
   const findings: string[] = []
   const suggestions: string[] = []
 
-  if (!wifiValidLength) findings.push(password.length < MIN_WIFI_LENGTH
+  if (!wifiValidLength) findings.push(passwordLength < MIN_WIFI_LENGTH
     ? `أقصر من الحد الأدنى لعبارة WPA (${MIN_WIFI_LENGTH} محارف).`
     : `أطول من الحد القياسي لعبارة WPA (${MAX_WIFI_LENGTH} محرفًا).`)
+  if (!portableWifiPassphrase && wifiValidLength) findings.push('تتضمن محارف غير ASCII؛ قد يقبلها الراوتر الحالي، لكنها ليست عبارة WPA محمولة بين الأجهزة.')
   if (common) findings.push(`${ssidMatch ? 'تتضمن اسم شبكة' : 'تتضمن كلمة شائعة أو كلمة مرتبطة بالسياق'}؛ سيجربها المهاجم مبكرًا.`)
   if (sequence) findings.push('تحتوي تسلسلًا معروفًا مثل 123456 أو abcdef أو نمط لوحة مفاتيح.')
   if (repeated) findings.push('تحتوي محارف أو مقاطع متكررة يسهل التنبؤ بها.')
   if (predictable) findings.push('تحتوي نمطًا متوقعًا مثل سنة أو تاريخ أو تكرار متناوب.')
-  if (password.length < 16) findings.push('الطول أقل من توصيتنا البالغة 16 محرفًا.')
+  if (passwordLength < 16) findings.push('الطول أقل من توصيتنا البالغة 16 محرفًا.')
   if (profile.categories < 3) findings.push('تنوع مجموعات الأحرف محدود؛ المساحة المحتملة للتخمين أصغر.')
   if (result.feedback.warning) findings.push(translateWarning(result.feedback.warning))
 
-  if (password.length < 16) suggestions.push('استخدم 16 محرفًا على الأقل، ويفضل 20 أو أكثر.')
+  if (passwordLength < 16) suggestions.push('استخدم 16 محرفًا على الأقل، ويفضل 20 أو أكثر.')
+  if (!portableWifiPassphrase && wifiValidLength) suggestions.push('لأعلى توافق مع WPA استخدم محارف ASCII قابلة للطباعة فقط، أو تحقق من توثيق الراوتر قبل تغيير العبارة.')
   if (profile.categories < 3) suggestions.push('استخدم مزيجًا من الحروف والأرقام والرموز، أو عبارة طويلة من كلمات عشوائية.')
   if (common || sequence || repeated || predictable) suggestions.push('ابتعد عن أسماء الأشخاص والمدن والشبكة والتواريخ والتسلسلات والتكرار.')
   if (security === 'WEP' || security === 'WPA') suggestions.push('حدّث إعداد الراوتر إلى WPA2-AES أو WPA3؛ قوة العبارة وحدها لا تصلح بروتوكولًا قديمًا.')
@@ -502,7 +370,9 @@ export async function analyzePassword(
     findings: unique(findings),
     suggestions: unique(suggestions),
     metrics: {
-      length: password.length,
+      length: passwordLength,
+      utf8Bytes: passwordUtf8Bytes,
+      portableWifiPassphrase,
       diversity: profile.diversityScore,
       commonWord: common,
       sequence,

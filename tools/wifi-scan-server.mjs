@@ -9,37 +9,54 @@ const configuredOrigins = (process.env.WIFI_SCAN_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean)
 
-function corsOrigin(requestOrigin) {
-  // The server binds to loopback by default and only returns public broadcast
-  // metadata. Allowing a browser origin makes it possible to use the static
-  // GitHub Pages UI with this local companion process. Set WIFI_SCAN_ORIGINS
-  // in shared environments to use an explicit allow-list instead.
-  if (!requestOrigin) return '*'
-  if (!configuredOrigins.length || configuredOrigins.includes('*')) return requestOrigin
-  return configuredOrigins.includes(requestOrigin) ? requestOrigin : ''
+if (configuredOrigins.includes('*')) {
+  console.warn('WIFI_SCAN_ORIGINS يجب أن يحتوي أصولًا صريحة، وليس *. سيتم رفضه.')
 }
 
-function sendJson(response, statusCode, payload, origin = '') {
+function isLoopbackOrigin(origin) {
+  try {
+    const hostname = new URL(origin).hostname
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  } catch {
+    return false
+  }
+}
+
+function corsOrigin(requestOrigin) {
+  // The helper is loopback-only, but a permissive CORS response would still
+  // let any web page inventory a visitor's nearby SSIDs. Local development is
+  // allowed by default; GitHub Pages and other remote origins must be named
+  // explicitly in WIFI_SCAN_ORIGINS.
+  if (!requestOrigin) return ''
+  if (configuredOrigins.length) return configuredOrigins.includes(requestOrigin) ? requestOrigin : ''
+  return isLoopbackOrigin(requestOrigin) ? requestOrigin : ''
+}
+
+function sendJson(response, statusCode, payload, origin = '', allowPrivateNetwork = false) {
   if (origin) response.setHeader('Access-Control-Allow-Origin', origin)
-  response.setHeader('Vary', 'Origin')
+  response.setHeader('Vary', 'Origin, Access-Control-Request-Private-Network')
   response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   response.setHeader('Access-Control-Allow-Headers', 'Accept')
+  // Chromium may send this preflight when an HTTPS static page calls a
+  // loopback helper. Only grant it after the origin passed corsOrigin().
+  if (allowPrivateNetwork && origin) response.setHeader('Access-Control-Allow-Private-Network', 'true')
   response.setHeader('Cache-Control', 'no-store')
   response.setHeader('X-Content-Type-Options', 'nosniff')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.statusCode = statusCode
-  response.end(JSON.stringify(payload))
+  response.end(statusCode === 204 ? undefined : JSON.stringify(payload))
 }
 
 const server = http.createServer(async (request, response) => {
   const origin = corsOrigin(request.headers.origin)
+  const wantsPrivateNetwork = request.headers['access-control-request-private-network'] === 'true'
   if (request.headers.origin && !origin) {
     sendJson(response, 403, { error: 'هذا المصدر غير مصرح له بالوصول إلى مساعد المسح.', code: 'ORIGIN_NOT_ALLOWED' })
     return
   }
 
   if (request.method === 'OPTIONS') {
-    sendJson(response, 204, {}, origin)
+    sendJson(response, 204, {}, origin, wantsPrivateNetwork)
     return
   }
 

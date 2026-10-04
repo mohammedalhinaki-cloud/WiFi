@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzePassword, formatDuration, generateStrongPassword, simulateTargetedGuessing } from './password'
+import { analyzePassword, formatDuration, generateStrongPassword } from './password'
 
 describe('password analyser', () => {
   it('flags short and common Wi-Fi passwords', async () => {
@@ -49,20 +49,20 @@ describe('password analyser', () => {
     expect(generated).toMatch(/[!@#$%&*+\-=?]/)
   })
 
-  it('runs concrete context-aware guesses against the in-memory reference', () => {
-    const result = simulateTargetedGuessing('Home_5G@123', 'Home_5G', '', 5_000)
-    expect(result.matched).toBe(true)
-    expect(result.matchedAt).toBeGreaterThan(0)
-    expect(result.matchedAt).toBeLessThanOrEqual(5_000)
-    expect(result.matchedBy).toContain('سياقي')
-    expect(result.guessesPerSecond).toBeGreaterThan(0)
+  it('uses supplied context locally and keeps effective entropy below the theoretical limit', async () => {
+    const result = await analyzePassword('Ft557Lab!2026', 'Ft.55-7', 'WPA2', 'lab, training')
+    expect(result.metrics.contextualMatches).toBeGreaterThan(0)
+    expect(result.metrics.predictable).toBe(true)
+    expect(result.entropyBits).toBeLessThanOrEqual(result.searchSpaceBits)
+    expect(result.guesses).toBeLessThan(result.possibleCombinations)
   })
 
-  it('stops an unmatched simulation exactly at its configured budget', () => {
-    const result = simulateTargetedGuessing('Truly-Random-Reference-99!', 'Studio', '', 500)
-    expect(result.matched).toBe(false)
-    expect(result.attempted).toBe(500)
-    expect(result.maxGuesses).toBe(500)
+  it('counts Unicode characters correctly and warns when the passphrase is not portable WPA ASCII', async () => {
+    const result = await analyzePassword('مختبرأمن123!أ', 'Lab', 'WPA3')
+    expect(result.metrics.length).toBe(Array.from('مختبرأمن123!أ').length)
+    expect(result.metrics.utf8Bytes).toBeGreaterThan(result.metrics.length)
+    expect(result.metrics.portableWifiPassphrase).toBe(false)
+    expect(result.findings.some((finding) => finding.includes('ASCII'))).toBe(true)
   })
 })
 

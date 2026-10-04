@@ -9,6 +9,7 @@ import {
 } from './scanApi'
 
 afterEach(() => {
+  clearScanEndpoint()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -47,11 +48,18 @@ describe('scan API boundary', () => {
     expect(getScanEndpoint()).toBe('/api/scan')
   })
 
-  it('reports a non-JSON response without exposing a JSON parse exception', async () => {
+  it('does not persist endpoint credentials or fragments', () => {
+    expect(() => setScanEndpoint('https://user:secret@scanner.example/api/scan')).toThrow('بلا بيانات دخول')
+    expect(() => setScanEndpoint('https://scanner.example/api/scan#debug')).toThrow('بلا بيانات دخول')
+  })
+
+  it('reports a markup response without exposing a JSON parse exception', async () => {
     vi.stubGlobal('window', { location: { protocol: 'http:', hostname: 'localhost' } })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<!DOCTYPE html>', {
       status: 200,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
+      // A proxy can incorrectly label a fallback page as JSON; inspect both
+      // the declared type and the first body character.
+      headers: { 'content-type': 'application/json; charset=utf-8' },
     })))
 
     let error: unknown
@@ -64,6 +72,16 @@ describe('scan API boundary', () => {
     if (!(error instanceof ScanApiError)) throw error
     expect(error.code).toBe('SCAN_NOT_JSON')
     expect(error.message).toContain('HTML')
+  })
+
+  it('rejects a non-JSON content type even if its body is not HTML', async () => {
+    vi.stubGlobal('window', { location: { protocol: 'http:', hostname: 'localhost' } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('scanner unavailable', {
+      status: 503,
+      headers: { 'content-type': 'text/plain' },
+    })))
+
+    await expect(requestScan()).rejects.toMatchObject({ code: 'SCAN_NOT_JSON' })
   })
 
   it('accepts a JSON scan payload', async () => {

@@ -13,6 +13,9 @@ type ScanApiErrorCode =
   | 'SCAN_HTTP'
   | 'SCAN_INVALID_PAYLOAD'
 
+const JSON_CONTENT_TYPE = /(?:^|\/)json(?:;|$)|\+json(?:;|$)/iu
+const MARKUP_RESPONSE = /^\s*</u
+
 export interface ScanPayload {
   networks: ScanNetwork[]
   scannedAt?: string
@@ -66,6 +69,18 @@ export function setScanEndpoint(value: string) {
   const isAbsoluteEndpoint = /^https?:\/\//i.test(endpoint)
   if (!isRelativeEndpoint && !isAbsoluteEndpoint) {
     throw new Error('يجب أن يبدأ العنوان بـ / أو http:// أو https://.')
+  }
+
+  if (isAbsoluteEndpoint) {
+    let url: URL
+    try {
+      url = new URL(endpoint)
+    } catch {
+      throw new Error('عنوان Backend المسح غير صالح.')
+    }
+    if (url.username || url.password || url.hash) {
+      throw new Error('استخدم عنوان Backend بلا بيانات دخول أو جزء #.')
+    }
   }
 
   sessionEndpoint = endpoint
@@ -158,13 +173,21 @@ export async function requestScan(): Promise<ScanPayload> {
   const contentType = response.headers.get('content-type') || ''
   const body = await response.text()
 
-  // Calling response.json() directly was the source of the opaque
-  // "Unexpected token '<'" error when a static host returned index.html.
-  const looksLikeHtml = /^\s*<(?:!doctype\s+html|html[\s>])/i.test(body)
-  if ((contentType && !contentType.toLowerCase().includes('json')) || looksLikeHtml) {
+  // Never call response.json() blindly. Static hosts commonly answer an
+  // unknown /api/scan route with index.html, which otherwise leaks the vague
+  // "Unexpected token '<'" parser error into the UI.
+  const looksLikeMarkup = MARKUP_RESPONSE.test(body)
+  const declaresJson = !contentType || JSON_CONTENT_TYPE.test(contentType.toLowerCase())
+  if (looksLikeMarkup) {
     throw new ScanApiError(
       'SCAN_NOT_JSON',
-      'عنوان المسح أعاد HTML بدل JSON. غالبًا تم تشغيل النسخة الثابتة دون Backend للمسح.',
+      'عنوان المسح أعاد صفحة HTML/markup بدل JSON. اربط Backend للمسح أو تحقق من المسار.',
+    )
+  }
+  if (!declaresJson) {
+    throw new ScanApiError(
+      'SCAN_NOT_JSON',
+      `عنوان المسح أعاد Content-Type غير JSON (${contentType}). يجب أن يعيد Backend application/json.`,
     )
   }
 

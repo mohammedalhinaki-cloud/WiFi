@@ -36,6 +36,7 @@ const scoreColors = {
 
 export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) {
   const [password, setPassword] = useState('')
+  const [relatedWords, setRelatedWords] = useState('')
   const [visible, setVisible] = useState(false)
   const [result, setResult] = useState<PasswordAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
@@ -62,7 +63,7 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
     try {
       // Yield once so the busy state is painted before the bounded local work.
       await new Promise((resolve) => window.setTimeout(resolve, 0))
-      const analysis = await analyzePassword(password, network.ssid, network.security)
+      const analysis = await analyzePassword(password, network.ssid, network.security, relatedWords)
       setResult(analysis)
       onSave(network.id, {
         score: analysis.score,
@@ -136,6 +137,16 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
             <CheckItem passed={liveChecks.number} text="أرقام" />
             <CheckItem passed={liveChecks.symbol} text="رموز" />
           </div>
+          <label htmlFor="related-words">كلمات مرتبطة تريد كشفها <small>اختياري</small></label>
+          <input
+            id="related-words"
+            className="related-words-input"
+            value={relatedWords}
+            onChange={(event) => { setRelatedWords(event.target.value); setResult(null) }}
+            placeholder="مثل اسم المكان أو الفريق، وافصل بينها بفاصلة"
+            autoComplete="off"
+          />
+          <p className="field-help">تُستخدم داخل الذاكرة لهذه النتيجة فقط، ولا تُحفظ أو تُرسل.</p>
           <button className="button primary full" disabled={!password || loading} type="submit">
             {loading ? <><LoaderCircle className="spin" size={19} /> جارٍ تحليل قوة كلمة المرور…</> : <><Gauge size={19} /> تحليل قوة كلمة المرور</>}
           </button>
@@ -178,10 +189,12 @@ function authenticationLabel(security: WifiNetwork['security']) {
 function AnalysisResult({ result, security }: { result: PasswordAnalysis; security: WifiNetwork['security'] }) {
   const scoreColor = scoreColors[result.level]
   const metricRows = [
-    ['الطول', `${result.metrics.length} محرف`],
+    ['الطول', `${result.metrics.length} محرف · ${result.metrics.utf8Bytes} بايت UTF‑8`],
     ['تنوع الأحرف', `${result.metrics.diversity}%`],
     ['المساحة النظرية', `${formatLargeNumber(result.possibleCombinations)} احتمال`],
-    ['مقاومة التخمين', result.guessResistance],
+    ['حد مساحة البحث', `${result.searchSpaceBits.toFixed(1)} bit`],
+    ['الإنتروبي الفعّال', `${result.entropyBits.toFixed(1)} bit`],
+    ['توافق WPA', result.metrics.portableWifiPassphrase ? 'ASCII قياسي' : 'تحقق من الراوتر'],
   ]
   return (
     <section className="analysis-result" aria-live="polite">
@@ -218,7 +231,7 @@ function AnalysisResult({ result, security }: { result: PasswordAnalysis; securi
         </div>
       </div>
 
-      <p className="model-explanation"><strong>النموذج الحسابي:</strong> {result.model} الإنتروبي الفعّال {result.entropyBits.toFixed(1)} bit، ومساحة المحارف {result.characterPoolSize} محرفًا تقريبًا.</p>
+      <p className="model-explanation"><strong>النموذج الحسابي:</strong> {result.model} الإنتروبي الفعّال يختلف عن حد مساحة البحث لأنه يخصم أثر الكلمات والأنماط المكتشفة. حجم مجموعة المحارف المقدّر {result.characterPoolSize} محرفًا.</p>
 
       {(result.findings.length > 0 || result.suggestions.length > 0) && (
         <div className="advice-grid">
@@ -234,7 +247,7 @@ function AnalysisResult({ result, security }: { result: PasswordAnalysis; securi
           </div>
         </div>
       )}
-      <p className="estimate-note">هذه تقديرات حسابية لمساعدة مالك الشبكة على تحسين كلمة المرور، وليست محاولة دخول أو وعدًا بالكسر. لا تتصل الأداة بالراوتر ولا ترسل كلمات المرور أو التخمينات عبر الشبكة.</p>
+      <p className="estimate-note">هذه نتيجة تحليل للعبارة التي أدخلتها فقط؛ لا تستخرج كلمة مرور مجهولة ولا تثبت كلمة مرور من الشبكة. الزمن تقدير مقارن لا وعد بالكسر، ولا تتصل الأداة بالراوتر أو ترسل كلمات المرور عبر الشبكة.</p>
     </section>
   )
 }

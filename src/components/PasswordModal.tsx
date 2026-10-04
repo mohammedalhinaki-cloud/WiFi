@@ -18,6 +18,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { analyzePassword, generateStrongPassword } from '../lib/password'
+import { protocolLabel, protocolScore } from '../lib/networks'
 import type { NetworkAudit, PasswordAnalysis, WifiNetwork } from '../types'
 
 interface PasswordModalProps {
@@ -163,6 +164,10 @@ function CheckItem({ passed, text }: { passed: boolean; text: string }) {
   return <span className={passed ? 'passed' : ''}>{passed ? <CheckCircle2 size={15} /> : <XCircle size={15} />}{text}</span>
 }
 
+function authenticationLabel(security: WifiNetwork['security']) {
+  return protocolLabel(security)
+}
+
 function AnalysisResult({ result, security }: { result: PasswordAnalysis; security: WifiNetwork['security'] }) {
   const scoreColor = scoreColors[result.level]
   return (
@@ -185,9 +190,14 @@ function AnalysisResult({ result, security }: { result: PasswordAnalysis; securi
           <small>{Intl.NumberFormat('ar-SA').format(result.offlineRate)} محاولة/ث · {security}</small>
         </div>
         <div>
-          <span><ShieldAlert size={16} /> محاولة عبر الاتصال</span>
+          <span><ShieldAlert size={16} /> نموذج محاولة محدودة</span>
           <strong>{result.onlineTime}</strong>
-          <small>عند 10 محاولات/ث دون قفل</small>
+          <small>تقدير نظري فقط؛ لا يوجد اتصال أو محاولة فعلية</small>
+        </div>
+        <div>
+          <span><ShieldCheck size={16} /> قوة إعدادات المصادقة</span>
+          <strong>{authenticationLabel(security)}</strong>
+          <small>{security} · {protocolScore(security)}/100</small>
         </div>
       </div>
 

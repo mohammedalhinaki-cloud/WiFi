@@ -60,6 +60,18 @@ export function protocolScore(security: SecurityProtocol) {
   }
 }
 
+export function protocolLabel(security: SecurityProtocol) {
+  switch (security) {
+    case 'WPA3': return 'قوية جدًا'
+    case 'WPA2/WPA3': return 'قوية'
+    case 'WPA2': return 'جيدة'
+    case 'WPA':
+    case 'WEP': return 'ضعيفة'
+    case 'Open': return 'منعدمة'
+    default: return 'غير معروفة'
+  }
+}
+
 export function overallNetworkScore(network: WifiNetwork) {
   const protocol = protocolScore(network.security)
   if (!network.audit) return protocol

@@ -136,7 +136,7 @@ export async function analyzePassword(password: string, ssid: string, security: 
     crackSeconds,
     crackTime: security === 'WPA3' ? `تقدير محافظ: ${formatDuration(crackSeconds)}` : formatDuration(crackSeconds),
     onlineTime: formatDuration(guesses / 10 / 2),
-    label: score >= 85 ? 'ممتازة' : score >= 65 ? 'جيدة' : score >= 35 ? 'تحتاج تحسينًا' : 'ضعيفة جدًا',
+    label: score >= 85 ? 'قوية جدًا' : score >= 65 ? 'قوية' : score >= 35 ? 'متوسطة' : 'ضعيفة',
     findings: unique(findings),
     suggestions: unique(suggestions),
     checks: {

@@ -1,0 +1,158 @@
+import type { ScanNetwork } from '../types'
+
+const DEFAULT_SCAN_ENDPOINT = '/api/scan'
+
+type ScanApiErrorCode =
+  | 'SCAN_STATIC_HOST'
+  | 'SCAN_NETWORK'
+  | 'SCAN_NOT_JSON'
+  | 'SCAN_INVALID_JSON'
+  | 'SCAN_HTTP'
+  | 'SCAN_INVALID_PAYLOAD'
+
+export interface ScanPayload {
+  networks: ScanNetwork[]
+  scannedAt?: string
+  source?: string
+  notice?: string
+}
+
+export interface ScanCapability {
+  available: boolean
+  endpoint: string
+  reason?: string
+}
+
+export class ScanApiError extends Error {
+  readonly code: ScanApiErrorCode
+
+  constructor(code: ScanApiErrorCode, message: string) {
+    super(message)
+    this.name = 'ScanApiError'
+    this.code = code
+  }
+}
+
+function configuredEndpoint() {
+  const value = import.meta.env.VITE_WIFI_SCAN_API?.trim()
+  return value || DEFAULT_SCAN_ENDPOINT
+}
+
+function hasConfiguredEndpoint() {
+  return Boolean(import.meta.env.VITE_WIFI_SCAN_API?.trim())
+}
+
+export function isGitHubPagesHost(hostname: string) {
+  return hostname === 'github.io' || hostname.endsWith('.github.io')
+}
+
+/**
+ * A browser cannot read nearby Wi-Fi adapters by itself. Scanning is only
+ * possible when this page can reach a companion backend/native bridge.
+ */
+export function getScanCapability(): ScanCapability {
+  const endpoint = configuredEndpoint()
+
+  if (typeof window === 'undefined') {
+    return {
+      available: false,
+      endpoint,
+      reason: 'يتطلب المسح تشغيل الواجهة داخل متصفح مع Backend محلي.',
+    }
+  }
+
+  if (window.location.protocol === 'file:') {
+    return {
+      available: false,
+      endpoint,
+      reason: 'هذه الصفحة مفتوحة كملف ثابت. شغّل npm run dev أو اربط Backend للمسح.',
+    }
+  }
+
+  // GitHub Pages serves the SPA fallback as HTML and has no /api/scan route.
+  // Do not make a request there unless the deployment explicitly configured a
+  // separate scanner endpoint.
+  const isKnownStaticDeployment = import.meta.env.VITE_STATIC_DEPLOYMENT === 'true'
+  if (!hasConfiguredEndpoint() && (isKnownStaticDeployment || isGitHubPagesHost(window.location.hostname))) {
+    return {
+      available: false,
+      endpoint,
+      reason: 'نسخة GitHub Pages ثابتة ولا تحتوي Backend للمسح. شغّل المشروع محليًا أو اربط Backend مستقلًا.',
+    }
+  }
+
+  return { available: true, endpoint }
+}
+
+export async function requestScan(): Promise<ScanPayload> {
+  const capability = getScanCapability()
+  if (!capability.available) {
+    throw new ScanApiError('SCAN_STATIC_HOST', capability.reason || 'Backend المسح غير متاح في هذه البيئة.')
+  }
+
+  let response: Response
+  try {
+    response = await fetch(capability.endpoint, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    })
+  } catch {
+    throw new ScanApiError('SCAN_NETWORK', 'تعذّر الوصول إلى Backend المسح. شغّل npm run dev أو تحقق من عنوان Backend.')
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  const body = await response.text()
+
+  // Calling response.json() directly was the source of the opaque
+  // "Unexpected token '<'" error when a static host returned index.html.
+  const looksLikeHtml = /^\s*<(?:!doctype\s+html|html[\s>])/i.test(body)
+  if ((contentType && !contentType.toLowerCase().includes('json')) || looksLikeHtml) {
+    throw new ScanApiError(
+      'SCAN_NOT_JSON',
+      'عنوان المسح أعاد HTML بدل JSON. غالبًا تم تشغيل النسخة الثابتة دون Backend للمسح.',
+    )
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(body)
+  } catch {
+    throw new ScanApiError('SCAN_INVALID_JSON', 'استجابة Backend المسح ليست JSON صالحًا.')
+  }
+
+  if (!response.ok) {
+    const message = isRecord(payload) && typeof payload.error === 'string'
+      ? payload.error
+      : `أعاد Backend المسح الحالة ${response.status}.`
+    throw new ScanApiError('SCAN_HTTP', message)
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.networks) || !payload.networks.every(isScanNetworkRecord)) {
+    throw new ScanApiError('SCAN_INVALID_PAYLOAD', 'استجابة المسح صالحة شكليًا لكنها لا تحتوي networks صالحة.')
+  }
+
+  return {
+    networks: payload.networks as ScanNetwork[],
+    scannedAt: typeof payload.scannedAt === 'string' ? payload.scannedAt : undefined,
+    source: typeof payload.source === 'string' ? payload.source : undefined,
+    notice: typeof payload.notice === 'string' ? payload.notice : undefined,
+  }
+}
+
+export function scanErrorTitle(error: unknown) {
+  if (error instanceof ScanApiError) {
+    if (error.code === 'SCAN_STATIC_HOST') return 'المسح التلقائي غير متاح في هذه النسخة'
+    if (error.code === 'SCAN_NOT_JSON' || error.code === 'SCAN_INVALID_JSON') return 'Backend المسح لم يُرجع JSON'
+    if (error.code === 'SCAN_HTTP') return 'تعذّر تنفيذ المسح من Backend'
+  }
+  return 'تعذّر الوصول إلى Backend المسح'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isScanNetworkRecord(value: unknown): value is ScanNetwork {
+  return isRecord(value) && typeof value.ssid === 'string'
+}

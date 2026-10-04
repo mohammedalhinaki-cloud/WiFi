@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { demoNetworks } from '../lib/demo'
 import { networkFromScan, normalizeSecurity } from '../lib/networks'
+import { getScanCapability, requestScan, scanErrorTitle } from '../lib/scanApi'
 import type { ScanNetwork, SecurityProtocol, WifiNetwork } from '../types'
 
 interface ScanModalProps {
@@ -27,7 +28,9 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
   const [tab, setTab] = useState<Tab>('scan')
   const [status, setStatus] = useState<'idle' | 'scanning' | 'done' | 'error'>('idle')
   const [error, setError] = useState('')
+  const [errorTitle, setErrorTitle] = useState('')
   const [found, setFound] = useState<WifiNetwork[]>([])
+  const [scanCapability] = useState(getScanCapability)
   const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -40,16 +43,16 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
   const scan = async () => {
     setStatus('scanning')
     setError('')
+    setErrorTitle('')
     try {
-      const response = await fetch('./api/scan', { cache: 'no-store' })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'خدمة المسح المحلي غير متاحة.')
-      const networks = (payload.networks as ScanNetwork[]).map(networkFromScan)
+      const payload = await requestScan()
+      const networks = payload.networks.map(networkFromScan)
       setFound(networks)
       setOwnedIds(new Set(networks.filter((network) => network.connected).map((network) => network.id)))
       setStatus('done')
     } catch (caught) {
       setStatus('error')
+      setErrorTitle(scanErrorTitle(caught))
       setError(caught instanceof Error ? caught.message : 'تعذّر إكمال المسح.')
     }
   }
@@ -104,12 +107,21 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
 
         {tab === 'scan' && (
           <div className="scan-content">
-            {status === 'idle' && (
+            {status === 'idle' && scanCapability.available && (
               <div className="scan-idle">
                 <span className="radar-visual"><Radar size={42} /><i /><i /></span>
                 <h3>ابحث عن الشبكات المحيطة</h3>
-                <p>يعمل المسح التلقائي عند تشغيل مرصاد محليًا عبر <code>npm run dev</code>. المتصفح وحده لا يملك صلاحية قراءة شبكات Wi‑Fi.</p>
-                <button className="button primary" onClick={scan}><LocateFixed size={18} /> بدء المسح الآمن</button>
+                <p>سيطلب مرصاد المعلومات من Backend المسح عبر <code>{scanCapability.endpoint}</code>. المتصفح وحده لا يملك صلاحية قراءة محولات Wi‑Fi.</p>
+                <button className="button primary" onClick={scan}><LocateFixed size={18} /> بدء المسح عبر Backend</button>
+              </div>
+            )}
+
+            {status === 'idle' && !scanCapability.available && (
+              <div className="scan-unavailable">
+                <span className="radar-visual"><Radar size={42} /></span>
+                <h3>المسح التلقائي غير متاح في هذه النسخة</h3>
+                <p>{scanCapability.reason}</p>
+                <p className="scan-next-step">للمسح الحقيقي: شغّل المشروع محليًا بـ <code>npm run dev</code> أو اربط Backend/Native API مصرحًا به. يمكنك الآن الإضافة اليدوية أو استيراد JSON.</p>
               </div>
             )}
 
@@ -125,7 +137,7 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
             {status === 'error' && (
               <div className="scan-error">
                 <span><Wifi size={24} /></span>
-                <div><strong>المسح التلقائي غير متاح</strong><p>{error}</p></div>
+                <div><strong>{errorTitle || 'تعذّر تنفيذ المسح'}</strong><p>{error}</p></div>
                 <button className="button secondary small" onClick={scan}><RefreshCw size={15} /> إعادة</button>
               </div>
             )}

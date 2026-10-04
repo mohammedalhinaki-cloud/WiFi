@@ -6,12 +6,14 @@ describe('password analyser', () => {
     const result = await analyzePassword('wifi1234', 'Home', 'WPA2')
     expect(result.score).toBeLessThan(35)
     expect(result.level).toBe('critical')
+    expect(result.label).toBe('ضعيفة')
     expect(result.findings.some((finding) => finding.includes('توقع'))).toBe(true)
   })
 
   it('rewards long random-looking passwords', async () => {
     const result = await analyzePassword('T9!mQ2#vL8@pX4$kR7&zN5', 'Studio', 'WPA2')
     expect(result.score).toBeGreaterThanOrEqual(85)
+    expect(result.label).toBe('قوية جدًا')
     expect(result.checks.length).toBe(true)
     expect(result.checks.noCommonPattern).toBe(true)
   })

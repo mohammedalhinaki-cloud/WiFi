@@ -79,7 +79,9 @@ export default function App() {
     const audited = owned.filter((network) => network.audit)
     const scores = owned.map(overallNetworkScore)
     const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0
-    const secure = owned.filter((network) => overallNetworkScore(network) >= 70).length
+    // A protocol-only score is useful before a password audit, but it must not
+    // be presented as a fully verified network result.
+    const secure = owned.filter((network) => Boolean(network.audit) && overallNetworkScore(network) >= 70).length
     const attention = owned.filter((network) => overallNetworkScore(network) < 70 || !network.audit).length
     return { total: owned.length, audited: audited.length, average, secure, attention }
   }, [networks])
@@ -345,7 +347,7 @@ function ReportView({ networks, stats }: { networks: WifiNetwork[]; stats: Dashb
         <header><Brand /><div><strong>تقرير تدقيق Wi‑Fi</strong><span>{new Intl.DateTimeFormat('ar-SA', { dateStyle: 'long', timeStyle: 'short' }).format(new Date())}</span></div></header>
         <div className="report-score"><div className="report-grade">{stats.average >= 85 ? 'A' : stats.average >= 70 ? 'B' : stats.average >= 55 ? 'C' : 'D'}</div><div><span>النتيجة الإجمالية</span><strong>{stats.average} / 100</strong><p>{stats.average >= 80 ? 'بنية أمان قوية إجمالًا' : 'ينبغي معالجة البنود ذات الأولوية'}</p></div></div>
         <div className="report-summary"><div><span>الشبكات</span><strong>{stats.total}</strong></div><div><span>تم اختبارها</span><strong>{stats.audited}</strong></div><div><span>آمنة</span><strong>{stats.secure}</strong></div><div><span>تحتاج مراجعة</span><strong>{stats.attention}</strong></div></div>
-        <div className="report-table-wrap"><table><thead><tr><th>الشبكة</th><th>البروتوكول</th><th>قوة الكلمة</th><th>النتيجة</th><th>الحالة</th></tr></thead><tbody>{networks.map((network) => { const score = overallNetworkScore(network); return <tr key={network.id}><td><strong>{network.ssid}</strong><small>قناة {network.channel || '—'}</small></td><td>{network.security}</td><td>{network.audit ? `${network.audit.score}/100` : 'غير مختبرة'}</td><td>{score}/100</td><td><span className={`table-status ${score >= 70 ? 'safe' : 'warning'}`}>{score >= 70 ? <Check size={13} /> : <TriangleAlert size={13} />}{score >= 70 ? 'جيدة' : 'مراجعة'}</span></td></tr> })}</tbody></table></div>
+        <div className="report-table-wrap"><table><thead><tr><th>الشبكة</th><th>البروتوكول</th><th>قوة الكلمة</th><th>النتيجة</th><th>الحالة</th></tr></thead><tbody>{networks.map((network) => { const score = overallNetworkScore(network); return <tr key={network.id}><td><strong>{network.ssid}</strong><small>قناة {network.channel || '—'}</small></td><td>{network.security}</td><td>{network.audit ? `${network.audit.score}/100` : 'غير مختبرة'}</td><td>{score}/100</td><td><span className={`table-status ${network.audit && score >= 70 ? 'safe' : 'warning'}`}>{network.audit && score >= 70 ? <Check size={13} /> : <TriangleAlert size={13} />}{network.audit && score >= 70 ? 'جيدة' : 'مراجعة'}</span></td></tr> })}</tbody></table></div>
         {!networks.length && <div className="empty-inline"><FileText size={30} /><strong>لا توجد بيانات للتقرير</strong></div>}
         <footer><ShieldCheck size={16} /> أُنشئ محليًا بواسطة مرصاد · لا يحتوي على أسرار.</footer>
       </section>

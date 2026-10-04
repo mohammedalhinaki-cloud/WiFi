@@ -37,6 +37,16 @@ export interface ScanNetwork {
   connected?: boolean
 }
 
+export interface GuessSimulation {
+  attempted: number
+  maxGuesses: number
+  matched: boolean
+  matchedAt?: number
+  matchedBy?: string
+  elapsedMs: number
+  guessesPerSecond: number
+}
+
 export interface PasswordAnalysis {
   score: number
   level: Exclude<AuditLevel, 'untested'>

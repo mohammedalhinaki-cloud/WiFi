@@ -1,0 +1,14 @@
+{
+  "name": "مرصاد — تدقيق أمان Wi-Fi",
+  "short_name": "مرصاد",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f4f7f7",
+  "theme_color": "#071a21",
+  "description": "تدقيق محلي لإعدادات شبكات Wi-Fi وقوة كلمات المرور.",
+  "icons": [
+    { "src": "shield.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

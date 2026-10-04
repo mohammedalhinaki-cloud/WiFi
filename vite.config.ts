@@ -3,9 +3,17 @@ import react from '@vitejs/plugin-react'
 import { scanWifi } from './tools/wifi-scan.mjs'
 
 function localWifiScanner(): Plugin {
-  const handler = async (_request: unknown, response: { statusCode: number; setHeader: (key: string, value: string) => void; end: (body: string) => void }) => {
+  const handler = async (request: { method?: string }, response: { statusCode: number; setHeader: (key: string, value: string) => void; end: (body: string) => void }) => {
     response.setHeader('Content-Type', 'application/json; charset=utf-8')
     response.setHeader('Cache-Control', 'no-store')
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+
+    if (request.method !== 'GET') {
+      response.statusCode = 405
+      response.end(JSON.stringify({ error: 'يسمح Endpoint المسح بطلبات GET فقط.', code: 'METHOD_NOT_ALLOWED' }))
+      return
+    }
+
     try {
       const result = await scanWifi()
       response.statusCode = 200

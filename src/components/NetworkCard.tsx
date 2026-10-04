@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, CircleAlert, LockKeyhole, MoreHorizontal, Router, ShieldCheck, Wifi } from 'lucide-react'
-import { bandLabel, overallNetworkScore, signalLabel } from '../lib/networks'
+import { bandLabel, overallNetworkScore, protocolLabel, signalLabel } from '../lib/networks'
 import type { AuditLevel, WifiNetwork } from '../types'
 
 const levelCopy: Record<AuditLevel, string> = {
@@ -59,7 +59,7 @@ export function NetworkCard({ network, onAudit, onClaim, compact = false }: Netw
         </div>
         <div className="score-copy">
           <strong>{needsProtocolUpdate ? 'البروتوكول غير آمن' : levelCopy[level]}</strong>
-          <p>{needsProtocolUpdate ? `استبدل ${network.security} بـ WPA2 أو WPA3` : network.audit ? `آخر تدقيق ${relativeTime(network.audit.testedAt)}` : 'اختبر كلمة المرور المعروفة لديك'}</p>
+          <p>{needsProtocolUpdate ? `استبدل ${network.security} بـ WPA2 أو WPA3` : network.audit ? `آخر تدقيق ${relativeTime(network.audit.testedAt)}` : `إعدادات المصادقة: ${protocolLabel(network.security)} · اختبر كلمة المرور المعروفة لديك`}</p>
         </div>
         <span className={`level-icon ${level}`}>
           {level === 'excellent' || level === 'good' ? <Check size={17} /> : level === 'untested' ? <ShieldCheck size={17} /> : <CircleAlert size={17} />}

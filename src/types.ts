@@ -5,6 +5,9 @@ export interface NetworkAudit {
   score: number
   level: Exclude<AuditLevel, 'untested'>
   guesses: number
+  possibleCombinations?: number
+  entropyBits?: number
+  guessResistance?: string
   crackTime: string
   testedAt: string
   findings: string[]
@@ -38,14 +41,28 @@ export interface PasswordAnalysis {
   score: number
   level: Exclude<AuditLevel, 'untested'>
   guesses: number
+  possibleCombinations: number
   entropyBits: number
+  searchSpaceBits: number
+  characterPoolSize: number
   offlineRate: number
   crackSeconds: number
   crackTime: string
   onlineTime: string
   label: string
+  guessResistance: string
+  model: string
   findings: string[]
   suggestions: string[]
+  metrics: {
+    length: number
+    diversity: number
+    commonWord: boolean
+    sequence: boolean
+    repeated: boolean
+    predictable: boolean
+    contextualMatches: number
+  }
   checks: {
     length: boolean
     mixedCase: boolean

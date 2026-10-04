@@ -96,7 +96,8 @@ function hasConfiguredEndpoint() {
 }
 
 export function isGitHubPagesHost(hostname: string) {
-  return hostname === 'github.io' || hostname.endsWith('.github.io')
+  const normalized = hostname.trim().toLocaleLowerCase().replace(/\.$/u, '')
+  return normalized === 'github.io' || normalized.endsWith('.github.io')
 }
 
 /**

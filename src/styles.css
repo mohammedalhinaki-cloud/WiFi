@@ -324,6 +324,10 @@
   .password-field:focus-within { border-color: #43b8ae; box-shadow: 0 0 0 3px rgba(18,155,145,.09); }
   .password-field input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; padding: 0 14px; color: #16363c; letter-spacing: .05em; }
   .password-field button { width: 46px; height: 100%; border: 0; background: transparent; color: #779094; display: grid; place-items: center; }
+  .password-form > label:nth-of-type(2) { margin-top: 14px; }
+  .related-words-input { width: 100%; height: 38px; border: 1px solid #dbe5e5; border-radius: 9px; padding: 0 11px; outline: 0; color: #29494e; background: #fbfdfd; font-size: 11px; }
+  .related-words-input:focus { border-color: #43b8ae; box-shadow: 0 0 0 3px rgba(18,155,145,.09); }
+  .field-help { color: #9aa8aa; font-size: 8px; line-height: 1.5; margin: 5px 1px 0; }
   .live-checks { display: flex; gap: 7px; flex-wrap: wrap; margin: 10px 1px 15px; }
   .live-checks span { display: flex; align-items: center; gap: 4px; color: #97a4a7; font-size: 8.5px; }
   .live-checks span.passed { color: #15926c; }
@@ -340,12 +344,18 @@
   .status-pill.excellent, .status-pill.good { color: #138c67; background: #e6f7ef; }
   .status-pill.attention { color: #c78226; background: #fff2db; }
   .status-pill.critical { color: #ce5451; background: #ffebea; }
+  .analysis-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 14px; }
+  .analysis-metrics > div { padding: 8px 9px; border-radius: 9px; background: #f4f8f8; border: 1px solid #e5eded; }
+  .analysis-metrics span { display: block; color: #8a9b9e; font-size: 7.5px; }
+  .analysis-metrics strong { display: block; color: #26484d; font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }
   .time-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
   .time-grid > div { padding: 11px; border-radius: 10px; background: white; border: 1px solid #e6ecec; }
   .time-grid span { display: flex; align-items: center; gap: 5px; color: #748b8e; font-size: 8.5px; }
   .time-grid span svg { color: #168e85; }
   .time-grid strong { display: block; margin: 6px 0 2px; font-size: 12px; color: #23444a; }
   .time-grid small { display: block; color: #99a6a9; font-size: 7.5px; }
+  .model-explanation { margin: 10px 2px 0; padding: 8px 9px; border-radius: 8px; color: #708589; background: #f4f9f8; font-size: 7.8px; line-height: 1.65; }
+  .model-explanation strong { color: #3c6669; }
   .advice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 9px; }
   .advice-grid > div { padding: 10px 11px; border-radius: 9px; }
   .advice-grid .findings { background: #fff6e9; }
@@ -528,6 +538,7 @@
     .password-form { padding-inline: 18px; }
     .analysis-result { margin-inline: 18px; padding: 13px; }
     .result-ring { width: 72px; height: 72px; flex-basis: 72px; }
+    .analysis-metrics { grid-template-columns: 1fr 1fr; }
     .time-grid, .advice-grid { grid-template-columns: 1fr; }
     .generator-card { margin-inline: 18px; }
     .scan-content, .manual-form { padding-inline: 18px; }

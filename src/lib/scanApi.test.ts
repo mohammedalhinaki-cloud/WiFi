@@ -16,7 +16,7 @@ afterEach(() => {
 describe('scan API boundary', () => {
   it('recognises GitHub Pages hosts', () => {
     expect(isGitHubPagesHost('owner.github.io')).toBe(true)
-    expect(isGitHubPagesHost('github.io')).toBe(true)
+    expect(isGitHubPagesHost('GITHUB.IO.')).toBe(true)
     expect(isGitHubPagesHost('localhost')).toBe(false)
   })
 

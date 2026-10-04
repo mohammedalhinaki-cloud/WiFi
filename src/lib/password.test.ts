@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzePassword, formatDuration } from './password'
+import { analyzePassword, formatDuration, generateStrongPassword } from './password'
 
 describe('password analyser', () => {
   it('flags short and common Wi-Fi passwords', async () => {
@@ -27,6 +27,26 @@ describe('password analyser', () => {
     const wpa2 = await analyzePassword('T9!mQ2#vL8@pX4$kR7', 'Test', 'WPA2')
     const wpa3 = await analyzePassword('T9!mQ2#vL8@pX4$kR7', 'Test', 'WPA3')
     expect(wpa3.crackSeconds).toBeGreaterThan(wpa2.crackSeconds)
+    expect(wpa3.model).toContain('SAE')
+  })
+
+  it('analyses related words, sequences, repetition, and the search space', async () => {
+    const result = await analyzePassword('ParisParis2024', 'Studio', 'WPA2', 'Paris, owner')
+    expect(result.metrics.contextualMatches).toBeGreaterThan(0)
+    expect(result.metrics.repeated).toBe(true)
+    expect(result.metrics.predictable).toBe(true)
+    expect(result.possibleCombinations).toBeGreaterThan(0)
+    expect(result.searchSpaceBits).toBeGreaterThan(0)
+    expect(result.suggestions.length).toBeGreaterThan(0)
+  })
+
+  it('generates a fresh WPA-compatible password with Web Crypto', () => {
+    const generated = generateStrongPassword(24)
+    expect(generated).toHaveLength(24)
+    expect(generated).toMatch(/[a-z]/)
+    expect(generated).toMatch(/[A-Z]/)
+    expect(generated).toMatch(/[2-9]/)
+    expect(generated).toMatch(/[!@#$%&*+\-=?]/)
   })
 })
 

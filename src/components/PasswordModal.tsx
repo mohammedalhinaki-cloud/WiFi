@@ -17,7 +17,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import { analyzePassword, generateStrongPassword } from '../lib/password'
+import { analyzePassword, formatLargeNumber, generateStrongPassword } from '../lib/password'
 import { protocolLabel, protocolScore } from '../lib/networks'
 import type { NetworkAudit, PasswordAnalysis, WifiNetwork } from '../types'
 
@@ -36,6 +36,7 @@ const scoreColors = {
 
 export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) {
   const [password, setPassword] = useState('')
+  const [relatedWords, setRelatedWords] = useState('')
   const [visible, setVisible] = useState(false)
   const [result, setResult] = useState<PasswordAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
@@ -59,18 +60,24 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
     event.preventDefault()
     if (!password) return
     setLoading(true)
-    await new Promise((resolve) => window.setTimeout(resolve, 260))
-    const analysis = await analyzePassword(password, network.ssid, network.security)
-    setResult(analysis)
-    onSave(network.id, {
-      score: analysis.score,
-      level: analysis.level,
-      guesses: analysis.guesses,
-      crackTime: analysis.crackTime,
-      testedAt: new Date().toISOString(),
-      findings: analysis.findings,
-    })
-    setLoading(false)
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 260))
+      const analysis = await analyzePassword(password, network.ssid, network.security, relatedWords)
+      setResult(analysis)
+      onSave(network.id, {
+        score: analysis.score,
+        level: analysis.level,
+        guesses: analysis.guesses,
+        possibleCombinations: analysis.possibleCombinations,
+        entropyBits: analysis.entropyBits,
+        guessResistance: analysis.guessResistance,
+        crackTime: analysis.crackTime,
+        testedAt: new Date().toISOString(),
+        findings: analysis.findings,
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const createPassword = () => {
@@ -103,7 +110,7 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
 
         <div className="privacy-strip">
           <ShieldCheck size={18} />
-          <span><strong>خصوصية تامة:</strong> أدخل كلمة المرور التي تعرفها فقط. الأداة لا تستخرج كلمات مرور الشبكات.</span>
+          <span><strong>خصوصية تامة:</strong> أدخل كلمة المرور التي تعرفها فقط. الأداة لا تستخرج كلمة مجهولة من التخمين ولا تحاول تسجيل الدخول.</span>
         </div>
 
         <form onSubmit={submit} className="password-form">
@@ -123,6 +130,17 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
               {visible ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
+          <label htmlFor="related-password-words">كلمات مرتبطة بالسياق (اختياري)</label>
+          <input
+            id="related-password-words"
+            className="related-words-input"
+            value={relatedWords}
+            onChange={(event) => { setRelatedWords(event.target.value); setResult(null) }}
+            placeholder="مثال: اسم المالك، المدينة، اسم الحيوان"
+            dir="auto"
+            autoComplete="off"
+          />
+          <p className="field-help">افصل الكلمات بفواصل. ستُستخدم للمقارنة المحلية فقط ولن تُحفظ.</p>
           <div className="live-checks">
             <CheckItem passed={liveChecks.length} text="16 محرفًا أو أكثر" />
             <CheckItem passed={liveChecks.mixed} text="حروف متنوعة" />
@@ -141,7 +159,7 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
             <span className="generator-icon"><Sparkles size={19} /></span>
             <div>
               <strong>تحتاج كلمة مرور جديدة؟</strong>
-              <p>ولّد كلمة عشوائية قوية على جهازك.</p>
+              <p>ولّد كلمة عشوائية قوية جدًا على جهازك باستخدام مولد آمن.</p>
             </div>
             <button className="button secondary small" type="button" onClick={createPassword}><RefreshCw size={15} /> توليد</button>
           </div>
@@ -170,6 +188,13 @@ function authenticationLabel(security: WifiNetwork['security']) {
 
 function AnalysisResult({ result, security }: { result: PasswordAnalysis; security: WifiNetwork['security'] }) {
   const scoreColor = scoreColors[result.level]
+  const metricRows = [
+    ['الطول', `${result.metrics.length} محرف`],
+    ['تنوع الأحرف', `${result.metrics.diversity}%`],
+    ['المساحة النظرية', `${formatLargeNumber(result.possibleCombinations)} احتمال`],
+    ['سياق مرتبط', `${result.metrics.contextualMatches} مطابقة`],
+    ['مقاومة التخمين', result.guessResistance],
+  ]
   return (
     <section className="analysis-result" aria-live="polite">
       <div className="result-summary">
@@ -179,43 +204,49 @@ function AnalysisResult({ result, security }: { result: PasswordAnalysis; securi
         <div className="result-copy">
           <span className={`status-pill ${result.level}`}><ShieldCheck size={14} /> {result.label}</span>
           <h3>نتيجة تحليل العبارة السرية</h3>
-          <p>إنتروبي تقديري <bdi>{result.entropyBits.toFixed(1)} bit</bdi> · نحو {Intl.NumberFormat('ar-SA', { notation: 'compact', maximumFractionDigits: 1 }).format(result.guesses)} احتمال</p>
+          <p>مقاومة التخمين: <b>{result.guessResistance}</b> · نحو {formatLargeNumber(result.guesses)} تخمين متوقع</p>
         </div>
+      </div>
+
+      <div className="analysis-metrics">
+        {metricRows.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
 
       <div className="time-grid">
         <div>
-          <span><Clock3 size={16} /> هجوم افتراضي محلي</span>
+          <span><Clock3 size={16} /> زمن التخمين المتوقع</span>
           <strong>{result.crackTime}</strong>
           <small>{Intl.NumberFormat('ar-SA').format(result.offlineRate)} محاولة/ث · {security}</small>
         </div>
         <div>
-          <span><ShieldAlert size={16} /> نموذج محاولة محدودة</span>
+          <span><ShieldAlert size={16} /> نموذج محدود نظري</span>
           <strong>{result.onlineTime}</strong>
-          <small>تقدير نظري فقط؛ لا يوجد اتصال أو محاولة فعلية</small>
+          <small>5 محاولات/ث، بلا اتصال أو محاولة فعلية</small>
         </div>
         <div>
-          <span><ShieldCheck size={16} /> قوة إعدادات المصادقة</span>
+          <span><ShieldCheck size={16} /> قوة المصادقة</span>
           <strong>{authenticationLabel(security)}</strong>
           <small>{security} · {protocolScore(security)}/100</small>
         </div>
       </div>
 
+      <p className="model-explanation"><strong>النموذج الحسابي:</strong> {result.model} الإنتروبي الفعّال {result.entropyBits.toFixed(1)} bit، ومساحة المحارف {result.characterPoolSize} محرفًا تقريبًا.</p>
+
       {(result.findings.length > 0 || result.suggestions.length > 0) && (
         <div className="advice-grid">
           {result.findings.length > 0 && (
             <div className="findings">
-              <strong><ShieldAlert size={17} /> ملاحظات</strong>
+              <strong><ShieldAlert size={17} /> لماذا قد تضعف؟</strong>
               <ul>{result.findings.map((item) => <li key={item}>{item}</li>)}</ul>
             </div>
           )}
           <div className="suggestions">
-            <strong><Lightbulb size={17} /> توصيات</strong>
+            <strong><Lightbulb size={17} /> ما الذي يقويها؟</strong>
             <ul>{result.suggestions.map((item) => <li key={item}>{item}</li>)}</ul>
           </div>
         </div>
       )}
-      <p className="estimate-note">الأزمنة تقديرية وليست وعدًا بالكسر؛ تتغير حسب العتاد والبروتوكول وإعدادات الراوتر. لا تنفذ الأداة أي محاولة اتصال أو تخمين فعلية.</p>
+      <p className="estimate-note">لا يمكن استنتاج كلمة مرور مجهولة من نتيجة التحليل. الأزمنة مقارنة حسابية تقريبية وليست وعدًا بالكسر؛ لا تنفذ الأداة أي brute-force أو اتصال أو محاولة تسجيل دخول.</p>
     </section>
   )
 }

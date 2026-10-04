@@ -17,9 +17,9 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import { analyzePassword, formatLargeNumber, generateStrongPassword, simulateTargetedGuessing } from '../lib/password'
+import { analyzePassword, formatLargeNumber, generateStrongPassword } from '../lib/password'
 import { protocolLabel, protocolScore } from '../lib/networks'
-import type { GuessSimulation, NetworkAudit, PasswordAnalysis, WifiNetwork } from '../types'
+import type { NetworkAudit, PasswordAnalysis, WifiNetwork } from '../types'
 
 interface PasswordModalProps {
   network: WifiNetwork
@@ -36,10 +36,8 @@ const scoreColors = {
 
 export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) {
   const [password, setPassword] = useState('')
-  const [relatedWords, setRelatedWords] = useState('')
   const [visible, setVisible] = useState(false)
   const [result, setResult] = useState<PasswordAnalysis | null>(null)
-  const [simulation, setSimulation] = useState<GuessSimulation | null>(null)
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState('')
   const [copied, setCopied] = useState(false)
@@ -64,10 +62,8 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
     try {
       // Yield once so the busy state is painted before the bounded local work.
       await new Promise((resolve) => window.setTimeout(resolve, 0))
-      const analysis = await analyzePassword(password, network.ssid, network.security, relatedWords)
-      const guessRun = simulateTargetedGuessing(password, network.ssid, relatedWords)
+      const analysis = await analyzePassword(password, network.ssid, network.security)
       setResult(analysis)
-      setSimulation(guessRun)
       onSave(network.id, {
         score: analysis.score,
         level: analysis.level,
@@ -89,7 +85,6 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
     setGenerated(value)
     setPassword(value)
     setResult(null)
-    setSimulation(null)
     setVisible(true)
   }
 
@@ -115,18 +110,18 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
 
         <div className="privacy-strip">
           <ShieldCheck size={18} />
-          <span><strong>تخمين محلي مضبوط:</strong> تُنشئ الأداة حتى 50 ألف تخمين موجّه وتقارنها بالعبارة المرجعية داخل ذاكرة جهازك فقط؛ لا ترسل أي محاولة إلى الشبكة ولا تسجّل الدخول.</span>
+          <span><strong>تحليل محلي فقط:</strong> تُحلَّل خصائص كلمة المرور داخل ذاكرة جهازك؛ لا تُرسل أي محاولة إلى الشبكة ولا تحاول الأداة تسجيل الدخول.</span>
         </div>
 
         <form onSubmit={submit} className="password-form">
-          <label htmlFor="wifi-password">العبارة المرجعية لاختبار مقاومتها</label>
+          <label htmlFor="wifi-password">كلمة المرور التي تريد تدقيقها</label>
           <div className="password-field">
             <input
               id="wifi-password"
               type={visible ? 'text' : 'password'}
               value={password}
-              onChange={(event) => { setPassword(event.target.value); setResult(null); setSimulation(null); setGenerated('') }}
-              placeholder="أدخل العبارة لإجراء تحليل ومحاكاة دقيقة"
+              onChange={(event) => { setPassword(event.target.value); setResult(null); setGenerated('') }}
+              placeholder="أدخل كلمة المرور لإجراء تحليل محلي"
               autoComplete="new-password"
               autoFocus
               dir="ltr"
@@ -135,17 +130,6 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
               {visible ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
-          <label htmlFor="related-password-words">كلمات مرتبطة بالسياق (اختياري)</label>
-          <input
-            id="related-password-words"
-            className="related-words-input"
-            value={relatedWords}
-            onChange={(event) => { setRelatedWords(event.target.value); setResult(null); setSimulation(null) }}
-            placeholder="مثال: اسم المالك، المدينة، اسم الحيوان"
-            dir="auto"
-            autoComplete="off"
-          />
-          <p className="field-help">افصل الكلمات بفواصل. ستُستخدم للمقارنة المحلية فقط ولن تُحفظ.</p>
           <div className="live-checks">
             <CheckItem passed={liveChecks.length} text="16 محرفًا أو أكثر" />
             <CheckItem passed={liveChecks.mixed} text="حروف متنوعة" />
@@ -153,11 +137,11 @@ export function PasswordModal({ network, onClose, onSave }: PasswordModalProps) 
             <CheckItem passed={liveChecks.symbol} text="رموز" />
           </div>
           <button className="button primary full" disabled={!password || loading} type="submit">
-            {loading ? <><LoaderCircle className="spin" size={19} /> جارٍ التحليل والتخمين…</> : <><Gauge size={19} /> تحليل وتشغيل 50 ألف تخمين</>}
+            {loading ? <><LoaderCircle className="spin" size={19} /> جارٍ تحليل قوة كلمة المرور…</> : <><Gauge size={19} /> تحليل قوة كلمة المرور</>}
           </button>
         </form>
 
-        {result && simulation && <AnalysisResult result={result} simulation={simulation} security={network.security} />}
+        {result && <AnalysisResult result={result} security={network.security} />}
 
         <div className="generator-card">
           <div className="generator-head">
@@ -191,14 +175,12 @@ function authenticationLabel(security: WifiNetwork['security']) {
   return protocolLabel(security)
 }
 
-function AnalysisResult({ result, simulation, security }: { result: PasswordAnalysis; simulation: GuessSimulation; security: WifiNetwork['security'] }) {
+function AnalysisResult({ result, security }: { result: PasswordAnalysis; security: WifiNetwork['security'] }) {
   const scoreColor = scoreColors[result.level]
-  const simulationAttempts = formatLargeNumber(simulation.matchedAt || simulation.attempted)
   const metricRows = [
     ['الطول', `${result.metrics.length} محرف`],
     ['تنوع الأحرف', `${result.metrics.diversity}%`],
     ['المساحة النظرية', `${formatLargeNumber(result.possibleCombinations)} احتمال`],
-    ['سياق مرتبط', `${result.metrics.contextualMatches} مطابقة`],
     ['مقاومة التخمين', result.guessResistance],
   ]
   return (
@@ -209,25 +191,8 @@ function AnalysisResult({ result, simulation, security }: { result: PasswordAnal
         </div>
         <div className="result-copy">
           <span className={`status-pill ${result.level}`}><ShieldCheck size={14} /> {result.label}</span>
-          <h3>نتيجة تحليل العبارة السرية</h3>
+          <h3>نتيجة تحليل كلمة المرور</h3>
           <p>مقاومة التخمين: <b>{result.guessResistance}</b> · نحو {formatLargeNumber(result.guesses)} تخمين متوقع</p>
-        </div>
-      </div>
-
-      <div className={`guess-simulation ${simulation.matched ? 'matched' : 'resisted'}`}>
-        <span className="guess-simulation-icon">{simulation.matched ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}</span>
-        <div className="guess-simulation-copy">
-          <span>نتيجة التخمين المحلي الفعلي</span>
-          <strong>{simulation.matched
-            ? `تمت مطابقة العبارة عند التخمين رقم ${simulationAttempts}`
-            : `لم تظهر العبارة ضمن ${simulationAttempts} تخمين موجّه`}</strong>
-          <p>{simulation.matched
-            ? `الاستراتيجية: ${simulation.matchedBy}. غيّر العبارة لأنها ظهرت في قائمة قصيرة قابلة للتوقع.`
-            : 'هذه نتيجة النطاق المختبَر فقط، وليست دليلًا على استحالة التخمين بقائمة أكبر.'}</p>
-        </div>
-        <div className="guess-run-stats">
-          <span><bdi>{formatLargeNumber(simulation.guessesPerSecond)}</bdi><small>تخمين/ث</small></span>
-          <span><bdi>{simulation.elapsedMs < 1 ? '< 1' : simulation.elapsedMs.toFixed(1)}</bdi><small>مللي ثانية</small></span>
         </div>
       </div>
 
@@ -269,7 +234,7 @@ function AnalysisResult({ result, simulation, security }: { result: PasswordAnal
           </div>
         </div>
       )}
-      <p className="estimate-note">المطابقة الفعلية أعلاه محصورة بالعبارة المرجعية داخل الذاكرة. الأزمنة الأطول تقديرات حسابية وليست وعدًا بالكسر؛ لا تُرسل الأداة التخمينات إلى الراوتر ولا تنفذ أي محاولة تسجيل دخول.</p>
+      <p className="estimate-note">هذه تقديرات حسابية لمساعدة مالك الشبكة على تحسين كلمة المرور، وليست محاولة دخول أو وعدًا بالكسر. لا تتصل الأداة بالراوتر ولا ترسل كلمات المرور أو التخمينات عبر الشبكة.</p>
     </section>
   )
 }

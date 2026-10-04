@@ -8,13 +8,21 @@ import {
   Radar,
   RadioTower,
   RefreshCw,
+  ServerCog,
   ShieldCheck,
   Wifi,
   X,
 } from 'lucide-react'
 import { demoNetworks } from '../lib/demo'
 import { networkFromScan, normalizeSecurity } from '../lib/networks'
-import { getScanCapability, requestScan, scanErrorTitle } from '../lib/scanApi'
+import {
+  getLocalScannerEndpoint,
+  getScanCapability,
+  getScanEndpoint,
+  requestScan,
+  scanErrorTitle,
+  setScanEndpoint,
+} from '../lib/scanApi'
 import type { ScanNetwork, SecurityProtocol, WifiNetwork } from '../types'
 
 interface ScanModalProps {
@@ -30,8 +38,14 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
   const [error, setError] = useState('')
   const [errorTitle, setErrorTitle] = useState('')
   const [found, setFound] = useState<WifiNetwork[]>([])
-  const [scanCapability] = useState(getScanCapability)
+  const [scanCapability, setScanCapability] = useState(getScanCapability)
   const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set())
+  const [endpointDraft, setEndpointDraft] = useState(() => {
+    const endpoint = getScanEndpoint()
+    return endpoint === '/api/scan' ? getLocalScannerEndpoint() : endpoint
+  })
+  const [endpointError, setEndpointError] = useState('')
+  const [setupOpen, setSetupOpen] = useState(!scanCapability.available)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -54,6 +68,25 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
       setStatus('error')
       setErrorTitle(scanErrorTitle(caught))
       setError(caught instanceof Error ? caught.message : 'تعذّر إكمال المسح.')
+    }
+  }
+
+  const connectScanner = (event: FormEvent) => {
+    event.preventDefault()
+    setEndpointError('')
+    try {
+      const endpoint = setScanEndpoint(endpointDraft)
+      setEndpointDraft(endpoint)
+      const capability = getScanCapability()
+      setScanCapability(capability)
+      if (!capability.available) {
+        setEndpointError(capability.reason || 'هذا العنوان غير متاح في هذه الصفحة.')
+        return
+      }
+      setSetupOpen(false)
+      void scan()
+    } catch (caught) {
+      setEndpointError(caught instanceof Error ? caught.message : 'عنوان Backend غير صالح.')
     }
   }
 
@@ -119,10 +152,21 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
             {status === 'idle' && !scanCapability.available && (
               <div className="scan-unavailable">
                 <span className="radar-visual"><Radar size={42} /></span>
-                <h3>المسح التلقائي غير متاح في هذه النسخة</h3>
+                <h3>لم يتم ربط Backend المسح بعد</h3>
                 <p>{scanCapability.reason}</p>
-                <p className="scan-next-step">للمسح الحقيقي: شغّل المشروع محليًا بـ <code>npm run dev</code> أو اربط Backend/Native API مصرحًا به. يمكنك الآن الإضافة اليدوية أو استيراد JSON.</p>
+                <p className="scan-next-step">للمسح الحقيقي شغّل مساعد المسح محليًا ثم اربط عنوانه أدناه. يمكنك أيضًا الإضافة اليدوية أو استيراد JSON دون أي Backend.</p>
               </div>
+            )}
+
+            {(status === 'idle' || status === 'error') && (
+              <ScannerSetup
+                endpoint={endpointDraft}
+                open={setupOpen}
+                error={endpointError}
+                onToggle={() => { setSetupOpen((current) => !current); setEndpointError('') }}
+                onEndpointChange={setEndpointDraft}
+                onSubmit={connectScanner}
+              />
             )}
 
             {status === 'scanning' && (
@@ -191,6 +235,45 @@ export function ScanModal({ onClose, onAdd }: ScanModalProps) {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+interface ScannerSetupProps {
+  endpoint: string
+  open: boolean
+  error: string
+  onToggle: () => void
+  onEndpointChange: (endpoint: string) => void
+  onSubmit: (event: FormEvent) => void
+}
+
+function ScannerSetup({ endpoint, open, error, onToggle, onEndpointChange, onSubmit }: ScannerSetupProps) {
+  return (
+    <div className={`scanner-setup ${open ? 'open' : ''}`}>
+      <button className="scanner-setup-toggle" type="button" onClick={onToggle}>
+        <ServerCog size={16} />
+        <span>{open ? 'إخفاء إعدادات Backend' : 'تغيير عنوان Backend المسح'}</span>
+      </button>
+      {open && (
+        <form className="scanner-setup-form" onSubmit={onSubmit}>
+          <label htmlFor="scan-endpoint">عنوان Backend أو مساعد المسح</label>
+          <div className="scanner-endpoint-row">
+            <input
+              id="scan-endpoint"
+              dir="ltr"
+              value={endpoint}
+              onChange={(event) => onEndpointChange(event.target.value)}
+              spellCheck={false}
+              inputMode="url"
+              aria-describedby="scan-endpoint-help"
+            />
+            <button className="button soft small" type="submit">حفظ وتجربة</button>
+          </div>
+          <p id="scan-endpoint-help">للاستخدام مع GitHub Pages شغّل <code>npm run scan:server</code>، ثم استخدم العنوان الافتراضي <code>{getLocalScannerEndpoint()}</code>. يجب تفعيل CORS إذا كان Backend خارجيًا.</p>
+          {error && <strong className="scanner-setup-error">{error}</strong>}
+        </form>
+      )}
     </div>
   )
 }

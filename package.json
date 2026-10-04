@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "scan": "node tools/wifi-scan.mjs --pretty"
+    "scan": "node tools/wifi-scan.mjs --pretty",
+    "scan:server": "node tools/wifi-scan-server.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-arabic": "^5.2.8",

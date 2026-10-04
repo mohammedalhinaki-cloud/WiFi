@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isGitHubPagesHost, requestScan, ScanApiError } from './scanApi'
+import {
+  clearScanEndpoint,
+  getScanEndpoint,
+  isGitHubPagesHost,
+  requestScan,
+  ScanApiError,
+  setScanEndpoint,
+} from './scanApi'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -21,6 +28,23 @@ describe('scan API boundary', () => {
       code: 'SCAN_STATIC_HOST',
     })
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('supports a runtime scanner endpoint for a static deployment', () => {
+    const values = new Map<string, string>()
+    vi.stubGlobal('window', {
+      location: { protocol: 'https:', hostname: 'owner.github.io' },
+      localStorage: {
+        getItem: (key: string) => values.get(key) || null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    })
+
+    expect(setScanEndpoint('http://127.0.0.1:8787/api/scan')).toBe('http://127.0.0.1:8787/api/scan')
+    expect(getScanEndpoint()).toBe('http://127.0.0.1:8787/api/scan')
+    clearScanEndpoint()
+    expect(getScanEndpoint()).toBe('/api/scan')
   })
 
   it('reports a non-JSON response without exposing a JSON parse exception', async () => {

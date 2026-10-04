@@ -1,6 +1,9 @@
 import type { ScanNetwork } from '../types'
 
 const DEFAULT_SCAN_ENDPOINT = '/api/scan'
+const LOCAL_SCANNER_ENDPOINT = 'http://127.0.0.1:8787/api/scan'
+const SCAN_ENDPOINT_STORAGE_KEY = 'mersad.wifi.scanEndpoint.v1'
+let sessionEndpoint = ''
 
 type ScanApiErrorCode =
   | 'SCAN_STATIC_HOST'
@@ -33,13 +36,63 @@ export class ScanApiError extends Error {
   }
 }
 
-function configuredEndpoint() {
-  const value = import.meta.env.VITE_WIFI_SCAN_API?.trim()
-  return value || DEFAULT_SCAN_ENDPOINT
+function getStoredEndpoint() {
+  if (typeof window === 'undefined') return ''
+  try {
+    return window.localStorage?.getItem(SCAN_ENDPOINT_STORAGE_KEY)?.trim() || ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Returns the endpoint selected at runtime, then the build-time endpoint, and
+ * finally the Vite/Node companion route. Runtime configuration is important
+ * for the static GitHub Pages build: users can connect it to a scanner running
+ * on their own computer without rebuilding the UI.
+ */
+export function getScanEndpoint() {
+  return sessionEndpoint || getStoredEndpoint() || import.meta.env.VITE_WIFI_SCAN_API?.trim() || DEFAULT_SCAN_ENDPOINT
+}
+
+export function getLocalScannerEndpoint() {
+  return LOCAL_SCANNER_ENDPOINT
+}
+
+export function setScanEndpoint(value: string) {
+  const endpoint = value.trim()
+  if (!endpoint) throw new Error('أدخل عنوان Backend المسح.')
+  const isRelativeEndpoint = endpoint.startsWith('/') && !endpoint.startsWith('//')
+  const isAbsoluteEndpoint = /^https?:\/\//i.test(endpoint)
+  if (!isRelativeEndpoint && !isAbsoluteEndpoint) {
+    throw new Error('يجب أن يبدأ العنوان بـ / أو http:// أو https://.')
+  }
+
+  sessionEndpoint = endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage?.setItem(SCAN_ENDPOINT_STORAGE_KEY, endpoint)
+    } catch {
+      // Private browsing can deny localStorage. sessionEndpoint still keeps
+      // the endpoint available for the current page.
+    }
+  }
+  return endpoint
+}
+
+export function clearScanEndpoint() {
+  sessionEndpoint = ''
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage?.removeItem(SCAN_ENDPOINT_STORAGE_KEY)
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
 }
 
 function hasConfiguredEndpoint() {
-  return Boolean(import.meta.env.VITE_WIFI_SCAN_API?.trim())
+  const endpoint = getScanEndpoint()
+  return endpoint !== DEFAULT_SCAN_ENDPOINT
 }
 
 export function isGitHubPagesHost(hostname: string) {
@@ -51,7 +104,7 @@ export function isGitHubPagesHost(hostname: string) {
  * possible when this page can reach a companion backend/native bridge.
  */
 export function getScanCapability(): ScanCapability {
-  const endpoint = configuredEndpoint()
+  const endpoint = getScanEndpoint()
 
   if (typeof window === 'undefined') {
     return {
@@ -71,13 +124,13 @@ export function getScanCapability(): ScanCapability {
 
   // GitHub Pages serves the SPA fallback as HTML and has no /api/scan route.
   // Do not make a request there unless the deployment explicitly configured a
-  // separate scanner endpoint.
+  // separate scanner endpoint or the user connected the local companion API.
   const isKnownStaticDeployment = import.meta.env.VITE_STATIC_DEPLOYMENT === 'true'
   if (!hasConfiguredEndpoint() && (isKnownStaticDeployment || isGitHubPagesHost(window.location.hostname))) {
     return {
       available: false,
       endpoint,
-      reason: 'نسخة GitHub Pages ثابتة ولا تحتوي Backend للمسح. شغّل المشروع محليًا أو اربط Backend مستقلًا.',
+      reason: 'نسخة GitHub Pages ثابتة ولا تحتوي Backend للمسح. شغّل مساعد المسح محليًا أو اربط Backend مستقلًا.',
     }
   }
 
@@ -98,7 +151,7 @@ export async function requestScan(): Promise<ScanPayload> {
       headers: { Accept: 'application/json' },
     })
   } catch {
-    throw new ScanApiError('SCAN_NETWORK', 'تعذّر الوصول إلى Backend المسح. شغّل npm run dev أو تحقق من عنوان Backend.')
+    throw new ScanApiError('SCAN_NETWORK', 'تعذّر الوصول إلى Backend المسح. شغّل مساعد المسح أو تحقق من عنوان Backend.')
   }
 
   const contentType = response.headers.get('content-type') || ''

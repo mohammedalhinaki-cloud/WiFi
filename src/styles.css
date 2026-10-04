@@ -382,11 +382,21 @@
   .scan-idle h3 { font-size: 15px; margin: 0 0 7px; }
   .scan-idle p { max-width: 400px; color: #829599; font-size: 10px; line-height: 1.7; margin: 0 0 16px; }
   .scan-idle code, .import-panel code { direction: ltr; display: inline-block; color: #177d76; background: #eef6f5; padding: 1px 4px; border-radius: 4px; }
-  .scan-unavailable { min-height: 290px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 12px; }
+  .scan-unavailable { min-height: 250px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 8px 12px 0; }
   .scan-unavailable .radar-visual { color: #a67c35; background: #fff7e8; }
   .scan-unavailable h3 { font-size: 15px; margin: 0 0 7px; }
   .scan-unavailable p { max-width: 430px; color: #829599; font-size: 10px; line-height: 1.7; margin: 0 0 8px; }
   .scan-unavailable .scan-next-step { color: #8b7655; background: #fff8ea; border: 1px solid #f1e3c8; border-radius: 10px; padding: 9px 11px; }
+  .scanner-setup { margin: 0 auto 3px; width: min(490px, 100%); text-align: center; }
+  .scanner-setup-toggle { border: 0; background: transparent; color: #0b847d; display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 10px; }
+  .scanner-setup-toggle:hover { color: #075f5a; text-decoration: underline; }
+  .scanner-setup-form { margin-top: 5px; padding: 12px; border: 1px solid #dfeceb; border-radius: 11px; background: #f8fbfb; text-align: right; }
+  .scanner-setup-form label { display: block; color: #476368; font-size: 10px; font-weight: 650; margin-bottom: 6px; }
+  .scanner-endpoint-row { display: flex; align-items: center; gap: 7px; }
+  .scanner-endpoint-row input { direction: ltr; flex: 1; min-width: 0; height: 34px; border: 1px solid #d8e4e3; border-radius: 8px; padding: 0 9px; color: #24484d; background: white; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
+  .scanner-setup-form p { color: #829599; font-size: 9px; line-height: 1.7; margin: 7px 0 0; }
+  .scanner-setup-form code { direction: ltr; display: inline-block; color: #177d76; background: #eef6f5; padding: 1px 4px; border-radius: 4px; }
+  .scanner-setup-error { display: block; color: #bd5d55; font-size: 9px; line-height: 1.6; margin-top: 6px; }
   .scan-error { display: flex; align-items: flex-start; gap: 10px; border-radius: 11px; padding: 12px; margin-bottom: 13px; background: #fff4e8; border: 1px solid #f5e3c8; }
   .scan-error > span { color: #ce8a2c; }
   .scan-error > div { flex: 1; }
@@ -521,6 +531,8 @@
     .time-grid, .advice-grid { grid-template-columns: 1fr; }
     .generator-card { margin-inline: 18px; }
     .scan-content, .manual-form { padding-inline: 18px; }
+    .scanner-endpoint-row { align-items: stretch; flex-direction: column; }
+    .scanner-endpoint-row .button { width: 100%; }
     .modal-tabs { padding-inline: 18px; overflow-x: auto; }
     .modal-tabs button { white-space: nowrap; padding-inline: 8px; }
     .form-row { grid-template-columns: 1fr 90px; }

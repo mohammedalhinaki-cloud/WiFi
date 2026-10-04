@@ -1,4 +1,4 @@
-import type { PasswordAnalysis, SecurityProtocol } from '../types'
+import type { GuessSimulation, PasswordAnalysis, SecurityProtocol } from '../types'
 
 /**
  * This is deliberately a local, explainable layer on top of zxcvbn. The
@@ -206,6 +206,161 @@ export function formatLargeNumber(value: number) {
   if (!Number.isFinite(value)) return 'عدد هائل جدًا'
   if (value < 1_000_000) return new Intl.NumberFormat('ar-SA', { maximumFractionDigits: 0 }).format(value)
   return value.toExponential(2).replace('e+', ' × 10^')
+}
+
+const COMMON_GUESSES = [
+  '12345678', '123456789', '1234567890', '87654321', '00000000', '11111111',
+  'password', 'Password', 'Password1', 'Password123', 'passw0rd', 'Passw0rd',
+  'qwerty123', 'qwertyui', 'abc12345', 'admin123', 'admin1234', 'welcome1',
+  'welcome123', 'letmein1', 'iloveyou', 'internet', 'internet123', 'wifi1234',
+  'wireless', 'router123', 'مرحبا123', 'السعودية1', 'الرياض123',
+]
+
+const GUESS_SUFFIXES = [
+  '', '1', '12', '123', '1234', '12345', '123456', '321', '007', '000', '111',
+  '!', '@', '#', '!1', '@1', '!12', '@12', '!123', '@123', '#123', '_123', '-123',
+]
+
+const GUESS_PREFIXES = ['', '1', '123', '@', '!']
+const LEET_OPTIONS: Record<string, string[]> = {
+  a: ['a', '4', '@'],
+  e: ['e', '3'],
+  i: ['i', '1', '!'],
+  o: ['o', '0'],
+  s: ['s', '5', '$'],
+  t: ['t', '7'],
+}
+
+function titleCase(value: string) {
+  return value.toLocaleLowerCase().replace(/(^|[\s_-])(\p{L})/gu, (_match, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase()}`)
+}
+
+function leetVariants(value: string, limit = 24) {
+  let variants = ['']
+  for (const character of value) {
+    const options = LEET_OPTIONS[character.toLocaleLowerCase()] || [character]
+    const next: string[] = []
+    for (const prefix of variants) {
+      for (const option of options) {
+        next.push(prefix + option)
+        if (next.length >= limit) break
+      }
+      if (next.length >= limit) break
+    }
+    variants = next
+  }
+  return variants
+}
+
+function guessSeeds(ssid: string, relatedWords: string) {
+  const trimmedSsid = ssid.trim()
+  const ssidWithoutBand = trimmedSsid.replace(/[-_\s]?(?:2[.]?4|5|6)g(?:hz)?$/iu, '')
+  const ssidParts = trimmedSsid.split(/[^\p{L}\p{N}]+/u).filter((part) => part.length >= 3)
+  return unique([
+    trimmedSsid,
+    ssidWithoutBand,
+    ...ssidParts,
+    ...splitRelatedWords(relatedWords),
+    ...WIFI_TERMS,
+    ...ARABIC_TRANSLITERATIONS,
+  ].map((value) => value.trim())).filter(Boolean)
+}
+
+function* targetedGuessCandidates(ssid: string, relatedWords: string): Generator<readonly [string, string], void, unknown> {
+  for (const candidate of COMMON_GUESSES) yield [candidate, 'قائمة كلمات شائعة']
+
+  const year = new Date().getFullYear()
+  const yearSuffixes = Array.from({ length: 11 }, (_value, index) => String(year - 5 + index))
+    .flatMap((value) => [value, `${value}!`, `${value}@`, `@${value}`])
+  const suffixes = [...GUESS_SUFFIXES, ...yearSuffixes]
+  const seeds = guessSeeds(ssid, relatedWords)
+
+  for (const seed of seeds) {
+    const compact = seed.replace(/\s+/gu, '')
+    const caseVariants = unique([
+      seed,
+      compact,
+      seed.toLocaleLowerCase(),
+      seed.toLocaleUpperCase(),
+      titleCase(seed),
+      titleCase(compact),
+    ])
+    // Keep each seed's share bounded so the fixed budget covers every seed and
+    // still reaches pair-combination and numeric strategies.
+    const variants = unique([
+      ...caseVariants,
+      ...leetVariants(compact, 12),
+      ...leetVariants(compact.toLocaleLowerCase(), 12),
+    ]).slice(0, 18)
+
+    for (const variant of variants) {
+      for (const suffix of suffixes) yield [`${variant}${suffix}`, 'تحويل سياقي وبدائل أحرف']
+      for (const prefix of GUESS_PREFIXES.slice(1)) yield [`${prefix}${variant}`, 'بادئة شائعة مع كلمة سياقية']
+    }
+  }
+
+  const pairSeeds = seeds.slice(0, 12).flatMap((seed) => unique([seed, seed.toLocaleLowerCase(), titleCase(seed)]))
+  for (const first of pairSeeds) {
+    for (const second of pairSeeds) {
+      if (first === second) continue
+      for (const separator of ['', '_', '-', '@']) {
+        yield [`${first}${separator}${second}`, 'دمج كلمتين مرتبطتين']
+        yield [`${first}${separator}${second}123`, 'دمج سياقي مع لاحقة رقمية']
+      }
+    }
+  }
+
+  // Fill the remaining bounded budget with a deterministic numeric pattern.
+  // This is a local exposure simulation only; candidates are never sent to a
+  // router and no authentication API is called.
+  for (let value = 0; ; value += 1) {
+    yield [String(value).padStart(8, '0'), 'نمط رقمي من ثمانية خانات']
+  }
+}
+
+/**
+ * Run a bounded, exact guessing simulation against the reference phrase that
+ * is already present in browser memory. Unlike the zxcvbn estimate, a match
+ * here means that a concrete generated candidate was actually equal to the
+ * reference value. The function has no networking and cannot test an unknown
+ * router password, capture a handshake, or attempt authentication.
+ */
+export function simulateTargetedGuessing(
+  referencePassword: string,
+  ssid: string,
+  relatedWords = '',
+  requestedBudget = 50_000,
+): GuessSimulation {
+  const maxGuesses = Math.min(250_000, Math.max(1, Math.floor(requestedBudget) || 50_000))
+  const startedAt = globalThis.performance?.now?.() ?? Date.now()
+  const seen = new Set<string>()
+  let attempted = 0
+  let matchedBy: string | undefined
+
+  if (referencePassword) {
+    for (const [candidate, strategy] of targetedGuessCandidates(ssid, relatedWords)) {
+      if (seen.has(candidate)) continue
+      seen.add(candidate)
+      attempted += 1
+      if (candidate === referencePassword) {
+        matchedBy = strategy
+        break
+      }
+      if (attempted >= maxGuesses) break
+    }
+  }
+
+  const finishedAt = globalThis.performance?.now?.() ?? Date.now()
+  const elapsedMs = Math.max(0.01, finishedAt - startedAt)
+  return {
+    attempted,
+    maxGuesses,
+    matched: Boolean(matchedBy),
+    matchedAt: matchedBy ? attempted : undefined,
+    matchedBy,
+    elapsedMs,
+    guessesPerSecond: attempted ? Math.round(attempted / (elapsedMs / 1000)) : 0,
+  }
 }
 
 function mapLevel(score: number): PasswordAnalysis['level'] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzePassword, formatDuration, generateStrongPassword } from './password'
+import { analyzePassword, formatDuration, generateStrongPassword, simulateTargetedGuessing } from './password'
 
 describe('password analyser', () => {
   it('flags short and common Wi-Fi passwords', async () => {
@@ -47,6 +47,22 @@ describe('password analyser', () => {
     expect(generated).toMatch(/[A-Z]/)
     expect(generated).toMatch(/[2-9]/)
     expect(generated).toMatch(/[!@#$%&*+\-=?]/)
+  })
+
+  it('runs concrete context-aware guesses against the in-memory reference', () => {
+    const result = simulateTargetedGuessing('Home_5G@123', 'Home_5G', '', 5_000)
+    expect(result.matched).toBe(true)
+    expect(result.matchedAt).toBeGreaterThan(0)
+    expect(result.matchedAt).toBeLessThanOrEqual(5_000)
+    expect(result.matchedBy).toContain('سياقي')
+    expect(result.guessesPerSecond).toBeGreaterThan(0)
+  })
+
+  it('stops an unmatched simulation exactly at its configured budget', () => {
+    const result = simulateTargetedGuessing('Truly-Random-Reference-99!', 'Studio', '', 500)
+    expect(result.matched).toBe(false)
+    expect(result.attempted).toBe(500)
+    expect(result.maxGuesses).toBe(500)
   })
 })
 

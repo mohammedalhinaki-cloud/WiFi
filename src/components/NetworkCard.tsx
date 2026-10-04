@@ -59,7 +59,7 @@ export function NetworkCard({ network, onAudit, onClaim, compact = false }: Netw
         </div>
         <div className="score-copy">
           <strong>{needsProtocolUpdate ? 'البروتوكول غير آمن' : levelCopy[level]}</strong>
-          <p>{needsProtocolUpdate ? `استبدل ${network.security} بـ WPA2 أو WPA3` : network.audit ? `آخر تدقيق ${relativeTime(network.audit.testedAt)}` : `إعدادات المصادقة: ${protocolLabel(network.security)} · اختبر العبارة المرجعية محليًا`}</p>
+          <p>{needsProtocolUpdate ? `استبدل ${network.security} بـ WPA2 أو WPA3` : network.audit ? `آخر تدقيق ${relativeTime(network.audit.testedAt)}` : `إعدادات المصادقة: ${protocolLabel(network.security)} · دقّق كلمة المرور محليًا`}</p>
         </div>
         <span className={`level-icon ${level}`}>
           {level === 'excellent' || level === 'good' ? <Check size={17} /> : level === 'untested' ? <ShieldCheck size={17} /> : <CircleAlert size={17} />}
